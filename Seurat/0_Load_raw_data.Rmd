@@ -1,0 +1,85 @@
+---
+title: "0_Load_raw_data"
+author: "Xingli Yu"
+date: "2023-03-10"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Seurat)
+library(dplyr)
+library(patchwork)
+library(data.table)
+library(tidyverse)
+```
+
+## Loading single cell RNA-seq data  
+```{r}
+panc.data<- read.csv("count-matrix.csv",row.names=1)
+```
+
+```{r}
+panc <- CreateSeuratObject(counts = panc.data, project = "CRA001160", min.cells = 3, min.features = 200)
+cluster <- read.csv(file = "all_celltype.txt" ,sep = "\t",row.names=1)
+GSE124395 <- AddMetaData(object = panc , metadata = cluster , col.name = "cluster")
+```
+
+```{r}
+saveRDS(GSE124395, file='panc_Seurat.rds')
+```
+
+```{r}
+metadata %>%
+  ggplot(aes(color=orig.ident, x=nCount_RNA, fill= orig.ident)) +
+  geom_density(alpha = 0.2) +
+  scale_x_log10() +
+  theme_classic() +
+  ylab("Density") +
+  geom_vline(xintercept = 40000, linetype='dashed')
+
+```
+
+```{r}
+metadata %>%
+  ggplot(aes(color=orig.ident, x=percent.mt, fill= orig.ident)) +
+  geom_density(alpha = 0.2) +
+  scale_x_log10() +
+  theme_classic() +
+  geom_vline(xintercept = 10, linetype='dashed') +
+  ylab("Density")
+
+```
+
+```{r}
+metadata %>%
+  ggplot(aes(x=nCount_RNA, y=nFeature_RNA, color=percent.mt)) +
+  geom_point() +
+  scale_colour_gradient(low = "gray90", high = "black") +
+  stat_smooth(method=lm) +
+  scale_x_log10() +
+  scale_y_log10() +
+  theme_classic() +
+  geom_hline(yintercept = 700, linetype='dashed') +
+  geom_hline(yintercept = 6000, linetype='dashed') +
+  geom_vline(xintercept = 40000, linetype='dashed') 
+
+```
+
+# QC Filters: 700 < nFeature_RNA < 6000,  nCount_RNA < 40000
+```{r}
+panc_seurat <- subset(panc_seurat, subset = nFeature_RNA > 200 & nFeature_RNA < 6000 & nCount_RNA < 40000)
+```
+
+```{r}
+plot1 <- FeatureScatter(panc_seurat, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(panc_seurat, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+
+pdf(file.path("QCC.pdf"), width = 12, height = 4)
+CombinePlots(plots = list(plot1, plot2))
+dev.off()
+```
+
+```{r}
+saveRDS(panc_seurat, file='after_qc_seurat.rds')
+```
+

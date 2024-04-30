@@ -1,0 +1,100 @@
+---
+title: "2_Clustering"
+author: "Xingli Yu"
+date: "2023-03-10"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Seurat)
+library(dplyr)
+library(patchwork)
+library(data.table)
+library(tidyverse)
+```
+
+## Loading single cell RNA-seq data  
+```{r}
+filtered_seurat <- readRDS(file='after_qc_seurat.rds')
+
+filtered_seurat[["RNA"]] <- split(filtered_seurat[["RNA"]], f = filtered_seurat$Condition)
+```
+
+```{r}
+seurat_norm <- filtered_seurat %>%
+  NormalizeData() %>%
+  FindVariableFeatures(selection.method = "vst", nfeatures = 3000) %>% # nfeatures = 3000 by default
+  ScaleData()
+```
+
+```{r}
+# PCA
+seurat_norm <- RunPCA(seurat_norm, npcs = 10)   
+
+# UMAP
+seurat_norm <- RunUMAP(seurat_norm, reduction = "pca", dims = 1:10)
+
+```
+
+```{r}
+DimPlot(seurat_norm,reduction = "umap", group.by = "cluster", label = TRUE)
+```
+# Subset fibroblast cluster for later analysis
+```{r}
+saveRDS(seurat_norm, file='panc_seurat_fibroblast.rds')
+```
+
+```{r}
+DimPlot(seurat_norm,reduction = "umap", group.by = "cluster", label = TRUE)
+```
+
+```{r}
+DimPlot(seurat_norm, group.by = "Condition", raster=FALSE)
+
+```
+
+
+```{r}
+Idents(seurat_norm) <- seurat_norm@meta.data$cluster
+FeaturePlot(seurat_norm, features = c("EPCAM"), order = TRUE,raster=FALSE, reduction = "umap", label = TRUE, repel = TRUE)
+```
+
+```{r}
+seurat_norm <- IntegrateLayers(object = seurat_norm, method = CCAIntegration, orig.reduction = "pca", new.reduction = "integrated.cca", verbose = FALSE)
+
+# re-join layers after integration
+seurat_norm[["RNA"]] <- JoinLayers(seurat_norm[["RNA"]])
+
+seurat_norm <- FindNeighbors(seurat_norm, reduction = "integrated.cca", dims = 1:10)
+seurat_norm <- FindClusters(seurat_norm, resolution = 0.4)
+seurat_norm <- RunUMAP(seurat_norm, dims = 1:10, reduction = "integrated.cca")
+
+```
+
+```{r}
+DimPlot(seurat_norm, group.by = "Condition", raster=FALSE)
+```
+
+```{r}
+Idents(seurat_norm) <- seurat_norm@meta.data$RNA_snn_res.0.4
+DimPlot(seurat_norm,reduction = "umap", group.by = "cluster", label = TRUE)
+```
+
+```{r}
+Idents(seurat_norm) <- seurat_norm@meta.data$cluster
+FeaturePlot(seurat_norm, features = c("EPCAM"), order = TRUE,raster=FALSE, reduction = "umap", label = TRUE, repel = TRUE)
+```
+
+```{r}
+saveRDS(seurat_norm, file='after_intergration_seurat_full.rds')
+```
+
+```{r}
+normal_subset <- subset(seurat_norm, subset = Condition == "Normal")
+plot1 <- FeaturePlot(normal_subset, features = c("EPCAM"), order = TRUE,raster=FALSE, reduction = "umap", label = TRUE, repel = TRUE)
+
+tumor_subset <- subset(seurat_norm, subset = Condition == "Tumor")
+plot2 <- FeaturePlot(tumor_subset, features = c("EPCAM"), order = TRUE,raster=FALSE, reduction = "umap", label = TRUE, repel = TRUE)
+
+CombinePlots(plots = list(plot1, plot2))
+```
